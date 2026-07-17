@@ -1,0 +1,5 @@
+{
+  "minMatchChars": 13,
+  "sensitivity": 0.05,
+  "enableRefFilter": true
+}

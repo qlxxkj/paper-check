@@ -1,0 +1,5 @@
+export const CONFIG = {
+  MIN_MATCH_CHARS: 13,
+  SENSITIVITY: 0.05,
+  ENABLE_REF_FILTER: true
+};

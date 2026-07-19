@@ -1,0 +1,43 @@
+# .github/workflows/release.yml
+
+name: Build and Release Electron App
+
+# 1. 触发条件：当推送的 Git Tag 符合 "v*.*.*" 格式时触发
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+# 2. 工作流任务定义
+jobs:
+  release:
+    # 使用矩阵策略，同时在 Windows、macOS、Ubuntu 上构建
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    # 3. 步骤列表
+    steps:
+      # 步骤 1: 检出代码
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      # 步骤 2: 设置 Node.js 环境
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'  # 缓存 npm 依赖，加速构建
+
+      # 步骤 3: 安装项目依赖
+      - name: Install dependencies
+        run: npm ci  # 使用 npm ci 进行干净、快速的安装
+
+      # 步骤 4: 构建并发布 Electron 应用
+      - name: Build and Publish
+        env:
+          # GitHub 自动提供的令牌，用于发布 Release
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # 执行打包命令，并强制发布到 GitHub Release
+        run: npm run dist -- --publish always

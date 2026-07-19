@@ -18,12 +18,33 @@ import { autoUpdater } from 'electron-updater';  //自动更新
 
 let mainWindow: BrowserWindow | null = null;
 
+function getIconPath(): string {
+    const iconName = 'icon.ico';
+    if (app.isPackaged) {
+        // 打包后，resources 目录位于 process.resourcesPath
+        // 您的 resources 文件夹在打包时会被复制到 resources/app/resources
+        // 但更保险的方式是使用 app.getAppPath() 获取应用根目录
+        const appPath = app.getAppPath(); // 在打包后返回 app.asar 路径
+        const resourcePath = path.join(path.dirname(appPath), 'resources');
+        const iconFullPath = path.join(resourcePath, iconName);
+        if (fs.existsSync(iconFullPath)) {
+            return iconFullPath;
+        }
+        // 备选：process.resourcesPath
+        return path.join(process.resourcesPath, 'resources', iconName);
+    } else {
+        // 开发环境：从项目根目录读取
+        return path.join(__dirname, '../resources', iconName);
+    }
+}
+
 function createWindow() {
     Menu.setApplicationMenu(null);
 
-    const iconPath = app.isPackaged
-        ? path.join(process.resourcesPath, 'resources/icon.ico')
-        : path.join(__dirname, '../resources/icon.ico');
+    // const iconPath = app.isPackaged
+    //     ? path.join(process.resourcesPath, 'resources/icon.ico')
+    //     : path.join(__dirname, '../resources/icon.ico');
+    const iconPath = getIconPath();
 
     console.log('Icon path:', iconPath);
 
@@ -68,7 +89,6 @@ function setupAutoUpdater() {
 
     autoUpdater.on('update-available', (info) => {
         console.log('发现新版本:', info.version);
-        // 可以通知渲染进程显示更新提示
         mainWindow?.webContents.send('update-status', '发现新版本，正在下载...');
     });
 
@@ -79,24 +99,26 @@ function setupAutoUpdater() {
     autoUpdater.on('download-progress', (progressObj) => {
         let logMessage = `下载速度: ${progressObj.bytesPerSecond} - 已下载 ${progressObj.percent}%`;
         console.log(logMessage);
-        // 可以发送进度到渲染进程
         mainWindow?.webContents.send('update-progress', progressObj);
     });
 
     autoUpdater.on('update-downloaded', (info) => {
         console.log('更新下载完成:', info.version);
         updateDownloaded = true;
-        // 通知渲染进程
         mainWindow?.webContents.send('update-status', '更新下载完成，点击重启安装');
-
-        // 也可以使用 dialog 提示用户，并立即安装
-        // 这里我们通过渲染进程来触发安装，更灵活
     });
 
-    // 错误处理
+    // ==================== 错误处理（重点修改） ====================
     autoUpdater.on('error', (err) => {
-        console.error('更新出错:', err);
-        mainWindow?.webContents.send('update-status', `更新出错: ${err.message}`);
+        // 1. 控制台只输出简短的描述，不显示堆栈或完整对象
+        console.error(`[更新] 检查更新失败: ${err.message || '未知错误'}`);
+
+        // 2. 向用户发送友好的提示（不暴露技术细节）
+        const userMessage = '检查更新失败，请稍后重试或检查网络连接。';
+        mainWindow?.webContents.send('update-status', userMessage);
+
+        // 可选：如果你需要记录详细日志到文件（仅用于开发者调试），可以单独写日志文件
+        // 但这里我们不将详细错误发送到渲染进程
     });
 }
 

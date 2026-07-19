@@ -20,7 +20,7 @@
     "scripts": {
         "build": "webpack --config webpack.config.js",
         "start": "electron .",
-        "dist": "npm run build && electron-builder",
+        "dist": "npm run build && electron-builder  --publish always",
         "package": "electron-builder",
         "test": "echo \"Error: no test specified\" && exit 1"
     },
@@ -65,7 +65,17 @@
         "files": [
             "dist/**/*",
             "node_modules/**/*",
-            "config/**/*"
+            "config/**/*",
+            "resources/**/*"
+        ],
+        "extraResources": [
+            {
+                "from": "resources",
+                "to": "resources",
+                "filter": [
+                    "**/*"
+                ]
+            }
         ],
         "win": {
             "target": "nsis",

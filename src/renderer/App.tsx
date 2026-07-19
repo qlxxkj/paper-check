@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import CompareView from './components/CompareView';
 
-
 const globalStyles = `
   *::-webkit-scrollbar { display: none; }
   * { scrollbar-width: none; -ms-overflow-style: none; }
@@ -104,6 +103,19 @@ const styles: { [key: string]: React.CSSProperties } = {
         borderLeft: '4px solid #3182ce',
         flexShrink: 0,
     },
+    updateBox: {
+        backgroundColor: '#ebf8ff',
+        padding: '6px 14px',
+        borderRadius: 6,
+        marginBottom: 12,
+        fontSize: 13,
+        color: '#2b6cb0',
+        borderLeft: '4px solid #2b6cb0',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        flexShrink: 0,
+    },
     tableWrapper: {
         backgroundColor: '#fff',
         borderRadius: 12,
@@ -168,10 +180,6 @@ declare global {
     interface Window { electronAPI: any; }
 }
 
-function exportToCSV(data: any[], filename: string) {
-    // 保留但不再直接使用，因为导出合并了
-}
-
 const App: React.FC = () => {
     const [allDocs, setAllDocs] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
@@ -185,13 +193,48 @@ const App: React.FC = () => {
     const [pageSize, setPageSize] = useState(10);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
+    // ===== 新增：自动更新状态 =====
+    const [updateStatus, setUpdateStatus] = useState('');
+    const [updateProgress, setUpdateProgress] = useState(0);
+    const [updateAvailable, setUpdateAvailable] = useState(false);
+
     useEffect(() => {
         loadDocs();
+
+        // 监听导入进度
         window.electronAPI.onImportProgress((data: any) => {
             setProgress(data);
-            if (data.type === 'done')
+            if (data.type === 'done') {
                 setTimeout(() => setProgress(null), 3000);
+            }
         });
+
+        // ===== 监听更新事件 =====
+        // 更新状态（发现新版本、下载完成等）
+        window.electronAPI.onUpdateStatus((status: string) => {
+            setUpdateStatus(status);
+            if (status.includes('发现新版本') || status.includes('下载完成')) {
+                setUpdateAvailable(true);
+            }
+        });
+
+        // 更新进度
+        window.electronAPI.onUpdateProgress((progress: any) => {
+            setUpdateProgress(progress.percent);
+            if (progress.percent < 100) {
+                setUpdateStatus(`下载中... ${Math.round(progress.percent)}%`);
+            } else {
+                setUpdateStatus('下载完成，点击安装重启');
+            }
+        });
+
+        // 应用启动后检查更新
+        window.electronAPI.checkForUpdates();
+
+        // 清理监听器
+        return () => {
+            // 由于 electronAPI 是通过 contextBridge 暴露的，无法直接移除监听，但可以留空
+        };
     }, []);
 
     const loadDocs = async () => {
@@ -201,6 +244,11 @@ const App: React.FC = () => {
             setCurrentPage(1);
             setSelectedIds(new Set());
         } catch (err) { console.error(err); }
+    };
+
+    // ===== 处理安装更新 =====
+    const handleInstallUpdate = () => {
+        window.electronAPI.installUpdate();
     };
 
     // ========== 导入 ==========
@@ -216,7 +264,7 @@ const App: React.FC = () => {
         } finally { setLoading(false); }
     };
 
-    // ========== 批量导入（文件或文件夹） ==========
+    // ========== 批量导入 ==========
     const handleBatchImport = async () => {
         const result = await window.electronAPI.openFileDialog({
             properties: ['openFile', 'multiSelections', 'openDirectory'],
@@ -269,14 +317,12 @@ const App: React.FC = () => {
         await loadDocs();
     };
 
-    // ========== 导出（合并） ==========
+    // ========== 导出 ==========
     const handleExport = async () => {
         let ids: number[] = [];
-        // 优先使用选中项（跨页选中）
         if (selectedIds.size > 0) {
             ids = Array.from(selectedIds);
         } else {
-            // 否则导出当前页的源文档
             ids = currentDocs.filter(d => d.IsSource === 1).map(d => d.DocID);
         }
         if (ids.length === 0) {
@@ -395,6 +441,37 @@ const App: React.FC = () => {
                 <div style={styles.header}>
                     <h1 style={styles.title}>文档管理</h1>
                 </div>
+
+                {/* ===== 更新提示条 ===== */}
+                {updateStatus && (
+                    <div style={styles.updateBox}>
+                        <span>🔄 {updateStatus}</span>
+                        {updateProgress > 0 && updateProgress < 100 && (
+                            <progress value={updateProgress} max="100" style={{ marginLeft: 10, flex: 1 }} />
+                        )}
+                        {updateStatus.includes('下载完成') && (
+                            <button
+                                onClick={handleInstallUpdate}
+                                style={{
+                                    padding: '2px 12px',
+                                    backgroundColor: '#2b6cb0',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: 4,
+                                    cursor: 'pointer',
+                                    fontSize: 13,
+                                }}
+                            >
+                                立即安装
+                            </button>
+                        )}
+                        {updateStatus.includes('发现新版本') && !updateStatus.includes('下载中') && (
+                            <span style={{ marginLeft: 10, fontSize: 12, color: '#4a5568' }}>
+                                正在后台下载...
+                            </span>
+                        )}
+                    </div>
+                )}
 
                 {/* 统计 + 筛选 */}
                 <div style={styles.statsAndFilter}>

@@ -14,6 +14,7 @@ import {
 } from './database/models';
 import { backupDB, restoreDB } from './backup/backupRestore';
 import { DiffResult } from './dedup/diffComparator';
+import { autoUpdater } from 'electron-updater';  //自动更新
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -45,9 +46,65 @@ function createWindow() {
 
 app.disableHardwareAcceleration();
 
+
+/////////////////////
+//
+//  自动更新
+//
+/////////////////////
+
+// 更新相关状态
+let updateDownloaded = false;
+
+// 自动更新函数
+function setupAutoUpdater() {
+    // 检查更新（应用启动后可以调用）
+    autoUpdater.checkForUpdatesAndNotify();
+
+    // 监听更新事件
+    autoUpdater.on('checking-for-update', () => {
+        console.log('检查更新中...');
+    });
+
+    autoUpdater.on('update-available', (info) => {
+        console.log('发现新版本:', info.version);
+        // 可以通知渲染进程显示更新提示
+        mainWindow?.webContents.send('update-status', '发现新版本，正在下载...');
+    });
+
+    autoUpdater.on('update-not-available', (info) => {
+        console.log('当前已是最新版本:', info.version);
+    });
+
+    autoUpdater.on('download-progress', (progressObj) => {
+        let logMessage = `下载速度: ${progressObj.bytesPerSecond} - 已下载 ${progressObj.percent}%`;
+        console.log(logMessage);
+        // 可以发送进度到渲染进程
+        mainWindow?.webContents.send('update-progress', progressObj);
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+        console.log('更新下载完成:', info.version);
+        updateDownloaded = true;
+        // 通知渲染进程
+        mainWindow?.webContents.send('update-status', '更新下载完成，点击重启安装');
+
+        // 也可以使用 dialog 提示用户，并立即安装
+        // 这里我们通过渲染进程来触发安装，更灵活
+    });
+
+    // 错误处理
+    autoUpdater.on('error', (err) => {
+        console.error('更新出错:', err);
+        mainWindow?.webContents.send('update-status', `更新出错: ${err.message}`);
+    });
+}
+
+
 app.whenReady().then(() => {
     initDB();
     createWindow();
+    setupAutoUpdater(); //自动更新注册
     registerIpcHandlers();
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -56,6 +113,18 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
+});
+
+// IPC 通信：渲染进程请求检查更新
+ipcMain.on('check-for-updates', () => {
+    autoUpdater.checkForUpdatesAndNotify();
+});
+
+// IPC 通信：渲染进程请求安装更新
+ipcMain.on('install-update', () => {
+    if (updateDownloaded) {
+        autoUpdater.quitAndInstall(); // 退出应用并安装更新
+    }
 });
 
 // 递归获取文件夹下所有 .docx/.doc 文件

@@ -21,4 +21,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     batchDelete: (docIds: number[]) => ipcRenderer.invoke('batch-delete', docIds),
     batchMarkSource: (docIds: number[]) => ipcRenderer.invoke('batch-mark-source', docIds),
     exportDataZip: (docIds: number[]) => ipcRenderer.invoke('export-data-zip', docIds),
+
+    checkForUpdates: () => ipcRenderer.send('check-for-updates'),
+    installUpdate: () => ipcRenderer.send('install-update'),
+    onUpdateStatus: (callback: (status: string) => void) => {
+        ipcRenderer.on('update-status', (_, status) => callback(status));
+    },
+    onUpdateProgress: (callback: (progress: any) => void) => {
+        ipcRenderer.on('update-progress', (_, progress) => callback(progress));
+    },
 });

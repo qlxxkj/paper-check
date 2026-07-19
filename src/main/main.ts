@@ -19,16 +19,25 @@ let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
     Menu.setApplicationMenu(null);
+
+    const iconPath = app.isPackaged
+        ? path.join(process.resourcesPath, 'resources/icon.ico')
+        : path.join(__dirname, '../resources/icon.ico');
+
+    console.log('Icon path:', iconPath);
+
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
         autoHideMenuBar: true,
+        icon: iconPath,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
         },
     });
+
     // mainWindow.loadFile(path.join(__dirname, '..', 'src', 'renderer', 'index.html'));
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
     // mainWindow.webContents.openDevTools(); //打开开发者工具

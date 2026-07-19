@@ -12,23 +12,20 @@ export interface ParsedResult {
   modifyTime: string;
 }
 
+// 解析word文档，目前只支持docx格式，不支持doc和pdf
 export async function parseWordFile(filePath: string): Promise<ParsedResult> {
   const ext = path.extname(filePath).toLowerCase();
   let text = '';
+
   if (ext === '.docx') {
     const result = await mammoth.extractRawText({ path: filePath });
     text = result.value;
+  } else if (ext === '.pdf') {
+      throw new Error('暂不支持 PDF 格式，请转换为 .docx 后导入');
   } else if (ext === '.doc') {
-    // 使用textract (需安装)
-    const textract = require('textract');
-    text = await new Promise((resolve, reject) => {
-      textract.fromFileWithPath(filePath, (err: any, txt: string) => {
-        if (err) reject(err);
-        else resolve(txt);
-      });
-    });
+      throw new Error('暂不支持 .doc 格式，请将文档另存为 .docx 后再导入');
   } else {
-    throw new Error('不支持的文件格式，仅支持 .doc 和 .docx');
+    throw new Error('不支持的文件格式，仅支持 .docx');
   }
 
   // 按段落拆分（两个换行或更多）

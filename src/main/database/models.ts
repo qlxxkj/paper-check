@@ -1,10 +1,11 @@
 import { getDB } from './db';
 import { Document, Paragraph, RepeatRecord } from '../../shared/types';
+import { DiffResult, HighlightSegment } from '../dedup/diffComparator';
 
 export function insertDocument(doc: Omit<Document, 'DocID'>): number {
   const db = getDB();
   const stmt = db.prepare(`
-    INSERT INTO Document 
+    INSERT INTO Document
       (FileName, FilePath, FileSize, ParagraphCount, WordCount, FullTextHash, IsSource, RepeatStatus, RepeatRate, CreateTime, ExcludedRefWords)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
@@ -66,4 +67,55 @@ export function deleteAllData() {
 export function getParagraphsByDoc(docId: number): Paragraph[] {
   const db = getDB();
   return db.prepare('SELECT * FROM Paragraph WHERE DocID = ? ORDER BY ParaIndex').all(docId) as Paragraph[];
+}
+
+// 删除单个文档及其所有关联数据
+export function deleteDoc(docId: number): boolean {
+    const db = getDB();
+    const transaction = db.transaction(() => {
+        db.prepare('DELETE FROM RepeatRecord WHERE SourceDocID = ? OR TargetDocID = ?').run(docId, docId);
+        db.prepare('DELETE FROM ParaHashIndex WHERE DocID = ?').run(docId);
+        db.prepare('DELETE FROM Paragraph WHERE DocID = ?').run(docId);
+        db.prepare('DELETE FROM Document WHERE DocID = ?').run(docId);
+    });
+    try {
+        transaction();
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// 批量标记为源文档
+export function markDocsAsSource(docIds: number[]): void {
+    const db = getDB();
+    const stmt = db.prepare('UPDATE Document SET IsSource = 1 WHERE DocID = ?');
+    const transaction = db.transaction((ids: number[]) => {
+        for (const id of ids) {
+            stmt.run(id);
+        }
+    });
+    transaction(docIds);
+}
+
+/**
+ * 存储 Diff 结果到数据库
+ */
+export function storeDiffResults(docId1: number, docId2: number, diffResults: DiffResult[]) {
+    const db = getDB();
+    const insert = db.prepare(
+        'INSERT INTO DiffResult (DocID1, DocID2, ParaIndex1, ParaIndex2, Highlights) VALUES (?, ?, ?, ?, ?)'
+    );
+    const transaction = db.transaction((results: DiffResult[]) => {
+        for (const r of results) {
+            insert.run(
+                r.docId1,
+                r.docId2,
+                r.paraIndex1,
+                r.paraIndex2,
+                JSON.stringify(r.highlights)
+            );
+        }
+    });
+    transaction(diffResults);
 }

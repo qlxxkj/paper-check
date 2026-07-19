@@ -25,28 +25,33 @@
         "test": "echo \"Error: no test specified\" && exit 1"
     },
     "devDependencies": {
+        "@types/adm-zip": "^0.5.8",
         "@types/better-sqlite3": "^7.6.5",
-        "@types/node": "^20.0.0",
+        "@types/diff": "^7.0.2",
+        "@types/node": "^20.19.43",
         "@types/react": "^18.2.0",
         "@types/react-dom": "^18.2.0",
-        "@types/textract": "^2.4.0",
+        "copy-webpack-plugin": "^14.0.0",
         "electron": "^27.0.0",
-        "electron-builder": "^24.6.4",
+        "electron-builder": "^24.13.3",
+        "electron-rebuild": "^3.2.9",
         "ts-loader": "^9.5.0",
         "typescript": "^5.0.0",
         "webpack": "^5.88.0",
         "webpack-cli": "^5.1.0"
     },
     "dependencies": {
+        "adm-zip": "^0.6.0",
         "better-sqlite3": "^8.0.1",
-        "mammoth": "^1.6.0",
+        "diff": "^9.0.0",
+        "mammoth": "^1.12.0",
+        "pdf-parse": "^2.4.5",
         "react": "^18.2.0",
-        "react-dom": "^18.2.0",
-        "textract": "^2.5.0"
+        "react-dom": "^18.3.1"
     },
     "build": {
-        "appId": "com.worddedup.app",
-        "productName": "Word文档查重系统",
+        "appId": "com.lushengshuzi.papercheck",
+        "productName": "论文查重系统",
         "directories": {
             "output": "release"
         },
@@ -56,11 +61,13 @@
             "config/**/*"
         ],
         "win": {
-            "target": "portable",
+            "target": "nsis",
             "icon": "resources/icon.ico"
         },
-        "portable": {
-            "artifactName": "WordDedup.exe"
+        "nsis": {
+            "oneClick": false,
+            "perMachine": true,
+            "allowToChangeInstallationDirectory": true
         }
     }
 }

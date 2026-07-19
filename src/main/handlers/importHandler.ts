@@ -1,11 +1,15 @@
 import { Worker } from 'worker_threads';
 import path from 'path';
-import { BrowserWindow, dialog } from 'electron';
 
-export async function importFilesHandler(filePaths: string[], onProgress: (data: any) => void) {
+
+export async function importFilesHandler(
+    filePaths: string[],
+    onProgress: (data: any) => void,
+    config: any  // 新增
+) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(path.join(__dirname, 'importWorker.js'), {
-      workerData: { filePaths }
+        workerData: { filePaths, config }
     });
     let hasShownConfirm = false;
     worker.on('message', async (msg) => {

@@ -22,7 +22,7 @@ export function restoreDB(backupPath: string): boolean {
     const dest = db.name;
     fs.copyFileSync(src, dest);
     // 重新打开
-    require('./db').initDB();
+      require('../database/db').initDB();
     return true;
   } catch {
     return false;

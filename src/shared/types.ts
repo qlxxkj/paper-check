@@ -29,3 +29,16 @@ export interface RepeatRecord {
   RepeatParaCount: number;
   RepeatRate: number;
 }
+
+export interface HighlightSegment {
+    text: string;
+    isHighlight: boolean;
+}
+
+export interface DiffResult {
+    docId1: number;
+    docId2: number;
+    paraIndex1: number;
+    paraIndex2: number;
+    highlights: HighlightSegment[];
+}

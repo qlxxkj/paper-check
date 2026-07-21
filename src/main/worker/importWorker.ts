@@ -13,8 +13,17 @@ import { Document } from '../../shared/types';
 import { buildNGramIndex, findCandidates } from '../dedup/ngramIndex';
 import { compareDocs, DiffResult } from '../dedup/diffComparator';
 
+import { setDBPath, getDB } from '../database/db';
 
-const { filePaths, config } = workerData;
+const { filePaths, config, dbPath } = workerData;
+
+// 设置数据库路径
+setDBPath(dbPath);
+console.log('[Worker] 数据库路径:', dbPath);
+
+// 初始化数据库（如果尚未初始化）
+const db = getDB();
+
 
 async function processFiles() {
     console.log('[ImportWorker] 收到配置:', config);// 新增日志

@@ -2,14 +2,29 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-const DB_DIR = path.join(process.resourcesPath || __dirname, '../../databases');
-const DB_PATH = path.join(DB_DIR, 'app.db');
+let dbInstance: Database.Database | null = null;
+let currentDbPath: string = '';
 
-let db: Database.Database;
+/**
+ * 设置数据库文件路径（必须在使用前调用）
+ */
+export function setDBPath(dbPath: string) {
+    currentDbPath = dbPath;
+}
+
+function ensureDir(filePath: string) {
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+}
 
 export function initDB() {
-    if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
-    db = new Database(DB_PATH);
+    if (!currentDbPath) {
+        throw new Error('数据库路径未设置，请先调用 setDBPath()');
+    }
+    ensureDir(currentDbPath);
+    const db = new Database(currentDbPath);
 
     // 开启外键约束
     db.pragma('foreign_keys = ON');
@@ -81,7 +96,9 @@ export function initDB() {
     return db;
 }
 
-export function getDB() {
-  if (!db) initDB();
-  return db;
+export function getDB(): Database.Database {
+    if (!dbInstance) {
+        return initDB();
+    }
+    return dbInstance;
 }

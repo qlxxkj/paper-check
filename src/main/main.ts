@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import AdmZip from 'adm-zip';
-import { initDB, getDB } from './database/db';
+import { setDBPath, initDB, getDB } from './database/db';
 import { importFilesHandler } from './handlers/importHandler';
 import {
     getSourceDocs,
@@ -15,6 +15,17 @@ import {
 import { backupDB, restoreDB } from './backup/backupRestore';
 import { DiffResult } from './dedup/diffComparator';
 import { autoUpdater } from 'electron-updater';  //自动更新
+
+// 计算数据库路径
+function getDatabasePath(): string {
+    if (app.isPackaged) {
+        // 打包后：使用 userData 目录，确保可写
+        return path.join(app.getPath('userData'), 'databases', 'app.db');
+    } else {
+        // 开发环境：项目根目录下的 databases/app.db
+        return path.join(__dirname, '../../databases/app.db');
+    }
+}
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -65,6 +76,9 @@ function createWindow() {
     // mainWindow.webContents.openDevTools(); //打开开发者工具
 }
 
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
+app.commandLine.appendSwitch('disable-software-rasterizer');
 app.disableHardwareAcceleration();
 
 
@@ -124,6 +138,9 @@ function setupAutoUpdater() {
 
 
 app.whenReady().then(() => {
+    const dbPath = getDatabasePath();
+    console.log('[Main] 数据库路径:', dbPath);
+    setDBPath(dbPath);
     initDB();
     createWindow();
     setupAutoUpdater(); //自动更新注册
@@ -239,9 +256,10 @@ function registerIpcHandlers() {
     });
 
     ipcMain.handle('import-files', async (event, filePaths: string[]) => {
+        const dbPath = getDatabasePath();
         return importFilesHandler(filePaths, (progress) => {
             event.sender.send('import-progress', progress);
-        }, appConfig);
+        }, appConfig, dbPath);
     });
 
     ipcMain.handle('import-folder', async (event, folderPath: string) => {
@@ -249,9 +267,10 @@ function registerIpcHandlers() {
         if (files.length === 0) {
             return { success: 0, failed: 0, skipped: 0, message: '该文件夹下没有 Word 文档' };
         }
+        const dbPath = getDatabasePath();
         return importFilesHandler(files, (progress) => {
             event.sender.send('import-progress', progress);
-        }, appConfig);
+        }, appConfig, dbPath);
     });
 
     ipcMain.handle('import-mixed', async (event, paths: string[]) => {
@@ -272,9 +291,10 @@ function registerIpcHandlers() {
         if (allFiles.length === 0) {
             return { success: 0, failed: 0, skipped: 0, message: '没有找到 Word 文档' };
         }
+        const dbPath = getDatabasePath();
         return importFilesHandler(allFiles, (progress) => {
             event.sender.send('import-progress', progress);
-        }, appConfig);
+        }, appConfig, dbPath);
     });
 
     ipcMain.handle('get-source-docs', async () => {

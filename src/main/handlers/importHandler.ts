@@ -5,11 +5,12 @@ import path from 'path';
 export async function importFilesHandler(
     filePaths: string[],
     onProgress: (data: any) => void,
-    config: any  // 新增
+    config: any,
+    dbPath: string // 新增
 ) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(path.join(__dirname, 'importWorker.js'), {
-        workerData: { filePaths, config }
+        workerData: { filePaths, config, dbPath }
     });
     let hasShownConfirm = false;
     worker.on('message', async (msg) => {

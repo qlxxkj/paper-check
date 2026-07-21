@@ -32,8 +32,8 @@
         "@types/react": "^18.2.0",
         "@types/react-dom": "^18.2.0",
         "copy-webpack-plugin": "^14.0.0",
-        "electron": "^27.0.0",
-        "electron-builder": "^24.13.3",
+        "electron": "^21.4.4",
+        "electron-builder": "^23.6.0",
         "electron-rebuild": "^3.2.9",
         "ts-loader": "^9.5.0",
         "typescript": "^5.0.0",
@@ -52,7 +52,7 @@
     },
     "build": {
         "appId": "com.lushengshuzi.papercheck",
-        "productName": "论文查重系统",
+        "productName": "论文查重",
         "publish": [
             {
                 "provider": "github",
@@ -75,6 +75,22 @@
                 "filter": [
                     "**/*"
                 ]
+            },
+            {
+                "from": "build/vc_redist.x64.exe",
+                "to": "vc_redist.x64.exe"
+            },
+            {
+                "from": "build/vc_redist.x86.exe",
+                "to": "vc_redist.x86.exe"
+            },
+            {
+                "from": "build/Windows6.1-KB2999226-x64.msu",
+                "to": "Windows6.1-KB2999226-x64.msu"
+            },
+            {
+                "from": "build/Windows6.1-KB2999226-x86.msu",
+                "to": "Windows6.1-KB2999226-x86.msu"
             }
         ],
         "win": {
@@ -84,7 +100,14 @@
         "nsis": {
             "oneClick": false,
             "perMachine": true,
-            "allowToChangeInstallationDirectory": true
-        }
+            "allowToChangeInstallationDirectory": true,
+            "include": "build/installer.nsh",
+            "warningsAsErrors": false
+        },
+        "asar": true,
+        "asarUnpack": [
+            "node_modules/better-sqlite3",
+            "node_modules/bindings"
+        ]
     }
 }

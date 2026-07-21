@@ -104,17 +104,31 @@ const styles: { [key: string]: React.CSSProperties } = {
         flexShrink: 0,
     },
     updateBox: {
-        backgroundColor: '#ebf8ff',
-        padding: '6px 14px',
-        borderRadius: 6,
-        marginBottom: 12,
-        fontSize: 13,
-        color: '#2b6cb0',
-        borderLeft: '4px solid #2b6cb0',
+        // backgroundColor: '#ebf8ff',
+        // padding: '6px 14px',
+        // borderRadius: 6,
+        // marginBottom: 12,
+        // fontSize: 13,
+        // color: '#2b6cb0',
+        // borderLeft: '4px solid #2b6cb0',
+        // display: 'flex',
+        // alignItems: 'center',
+        // gap: 12,
+        // flexShrink: 0,
+        position: 'fixed',
+        bottom: 20,
+        right: 20,
+        backgroundColor: '#fff',
+        padding: '10px 16px',
+        borderRadius: 8,
+        boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
+        zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
         gap: 12,
-        flexShrink: 0,
+        maxWidth: 500,
+        fontSize: 14,
+        border: '1px solid #e2e8f0',
     },
     tableWrapper: {
         backgroundColor: '#fff',
@@ -176,6 +190,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     pageSizeSelect: { padding: '3px 6px', border: '1px solid #e2e8f0', borderRadius: 4, fontSize: 13 },
 };
 
+
+
 declare global {
     interface Window { electronAPI: any; }
 }
@@ -196,6 +212,8 @@ const App: React.FC = () => {
     // ===== 新增：自动更新状态 =====
     const [updateStatus, setUpdateStatus] = useState('');
     const [updateProgress, setUpdateProgress] = useState(0);
+    const [updateError, setUpdateError] = useState('');
+    const [showUpdateBox, setShowUpdateBox] = useState(false);
     const [updateAvailable, setUpdateAvailable] = useState(false);
 
     useEffect(() => {
@@ -211,10 +229,28 @@ const App: React.FC = () => {
 
         // ===== 监听更新事件 =====
         // 更新状态（发现新版本、下载完成等）
-        window.electronAPI.onUpdateStatus((status: string) => {
-            setUpdateStatus(status);
-            if (status.includes('发现新版本') || status.includes('下载完成')) {
-                setUpdateAvailable(true);
+        // 更新状态（支持字符串或对象）
+        window.electronAPI.onUpdateStatus((data: any) => {
+            if (typeof data === 'string') {
+                // 兼容旧格式
+                setUpdateStatus(data);
+                setShowUpdateBox(true);
+                if (data.includes('发现新版本') || data.includes('下载完成')) {
+                    setUpdateAvailable(true);
+                }
+                // 如果包含"错误"关键字，自动3秒后隐藏
+                if (data.includes('错误') || data.includes('失败')) {
+                    setTimeout(() => setShowUpdateBox(false), 3000);
+                }
+            } else if (data.type === 'error') {
+                setUpdateError(data.message);
+                setUpdateStatus(`更新失败: ${data.message}`);
+                setShowUpdateBox(true);
+                // 5秒后自动隐藏
+                setTimeout(() => setShowUpdateBox(false), 5000);
+            } else {
+                setUpdateStatus(data.message || '');
+                setShowUpdateBox(true);
             }
         });
 
@@ -279,6 +315,7 @@ const App: React.FC = () => {
             alert('导入失败：' + msg);
         } finally {
             setLoading(false);
+            await loadDocs(); // 无论如何都刷新
         }
     };
 
@@ -443,7 +480,7 @@ const App: React.FC = () => {
                 </div>
 
                 {/* ===== 更新提示条 ===== */}
-                {updateStatus && (
+                {showUpdateBox && (
                     <div style={styles.updateBox}>
                         <span>🔄 {updateStatus}</span>
                         {updateProgress > 0 && updateProgress < 100 && (
@@ -470,6 +507,20 @@ const App: React.FC = () => {
                                 正在后台下载...
                             </span>
                         )}
+                        {/* 关闭按钮 */}
+                        <button
+                            onClick={() => setShowUpdateBox(false)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: 18,
+                                marginLeft: 12,
+                                color: '#718096',
+                            }}
+                        >
+                            ✕
+                        </button>
                     </div>
                 )}
 

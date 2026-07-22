@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import CompareView from './components/CompareView';
+import '@fortawesome/fontawesome-free/css/all.min.css';
 
 const globalStyles = `
   *::-webkit-scrollbar { display: none; }
@@ -104,17 +105,6 @@ const styles: { [key: string]: React.CSSProperties } = {
         flexShrink: 0,
     },
     updateBox: {
-        // backgroundColor: '#ebf8ff',
-        // padding: '6px 14px',
-        // borderRadius: 6,
-        // marginBottom: 12,
-        // fontSize: 13,
-        // color: '#2b6cb0',
-        // borderLeft: '4px solid #2b6cb0',
-        // display: 'flex',
-        // alignItems: 'center',
-        // gap: 12,
-        // flexShrink: 0,
         position: 'fixed',
         bottom: 20,
         right: 20,
@@ -482,7 +472,9 @@ const App: React.FC = () => {
                 {/* ===== 更新提示条 ===== */}
                 {showUpdateBox && (
                     <div style={styles.updateBox}>
-                        <span>🔄 {updateStatus}</span>
+                        <span>
+                            <i className="fa-solid fa-arrow-rotate-right"></i> {updateStatus}
+                        </span>
                         {updateProgress > 0 && updateProgress < 100 && (
                             <progress value={updateProgress} max="100" style={{ marginLeft: 10, flex: 1 }} />
                         )}
@@ -519,7 +511,7 @@ const App: React.FC = () => {
                                 color: '#718096',
                             }}
                         >
-                            ✕
+                            <i className="fas fa-times"></i>
                         </button>
                     </div>
                 )}
@@ -538,34 +530,40 @@ const App: React.FC = () => {
 
                     <div style={styles.filterBar}>
                         <div style={styles.filterLeft}>
-                            <span style={styles.filterLabel}>🔍 文件名:</span>
+                            <span style={styles.filterLabel}> <i className="fas fa-search" style={{ marginRight: 4 }}></i>  文件名:</span>
                             <input type="text" placeholder="模糊搜索" value={keyword}
                                 onChange={(e) => { setKeyword(e.target.value); setCurrentPage(1); }}
                                 style={{ ...styles.filterInput, width: 140 }} />
-                            <span style={styles.filterLabel}>📅 导入日期:</span>
+                            <span style={styles.filterLabel}> <i className="fas fa-calendar" style={{ marginRight: 4 }}></i> 导入日期:</span>
                             <input type="date" value={importDate}
                                 onChange={(e) => { setImportDate(e.target.value); setCurrentPage(1); }}
                                 style={styles.filterInput} />
-                            <button style={{ ...styles.button, ...styles.btnPrimary }} onClick={() => setCurrentPage(1)}>查询</button>
-                            <button style={{ ...styles.button, ...styles.btnSecondary }} onClick={resetFilters}>重置</button>
-                            <button style={{ ...styles.button, ...styles.btnSuccess }} onClick={handleExport}>📦 导出</button>
+                            <button style={{ ...styles.button, ...styles.btnPrimary }} onClick={() => setCurrentPage(1)}>
+                                <i className="fa-brands fa-sistrix" style={{ marginRight: 4 }}></i> 查询
+                            </button>
+                            <button style={{ ...styles.button, ...styles.btnSecondary }} onClick={resetFilters}>
+                                <i className="fa-solid fa-arrows-rotate" style={{ marginRight: 4 }}></i>重置
+                            </button>
+                            <button style={{ ...styles.button, ...styles.btnSuccess }} onClick={handleExport}>
+                                <i className="fa-solid fa-arrow-up-from-bracket" style={{ marginRight: 4 }}></i>导出
+                            </button>
                         </div>
 
                         <div style={styles.filterCenter}>
                             <button style={{ ...styles.button, ...styles.btnPrimary }} onClick={handleBatchImport}>
-                                📁 批量导入
+                                <i className="fas fa-folder-open" style={{ marginRight: 4 }}></i>  批量导入
                             </button>
                             <button style={{ ...styles.button, ...styles.btnInfo }} onClick={handleBackup}>
-                                📥 备份
+                                <i className="fas fa-archive" style={{ marginRight: 4 }}></i> 备份
                             </button>
                             <button style={{ ...styles.button, ...styles.btnDanger }} onClick={handleBatchDelete}>
-                                🗑️ 批量删除
+                                <i className="fas fa-trash" style={{ marginRight: 4 }}></i>  批量删除
                             </button>
                         </div>
 
                         <div style={styles.filterRight}>
                             <button style={{ ...styles.button, ...styles.btnSuccess }} onClick={handleImport}>
-                                ➕ 新增
+                                <i className="fas fa-plus" style={{ marginRight: 4 }}></i> 新增
                             </button>
                         </div>
                     </div>
@@ -617,9 +615,15 @@ const App: React.FC = () => {
                                                 <span style={{ ...styles.statusBadge, ...statusInfo.badgeStyle }}>{statusInfo.label}</span>
                                             </td>
                                             <td style={styles.td}>
-                                                <button style={styles.actionButton} onClick={() => handleView(doc)}>查看</button>
-                                                <button style={styles.actionButton} onClick={() => handleEdit(doc)}>编辑</button>
-                                                <button style={{ ...styles.actionButton, color: 'red', borderColor: 'red' }} onClick={() => handleDeleteRow(doc.DocID)}>删除</button>
+                                                <button style={styles.actionButton} onClick={() => handleView(doc)}>
+                                                    <i className="fas fa-eye"></i> 查看
+                                                </button>
+                                                <button style={styles.actionButton} onClick={() => handleEdit(doc)}>
+                                                    <i className="fas fa-edit"></i> 编辑
+                                                </button>
+                                                <button style={{ ...styles.actionButton, color: 'red', borderColor: 'red' }} onClick={() => handleDeleteRow(doc.DocID)}>
+                                                    <i className="fas fa-trash-alt"></i> 删除
+                                                </button>
                                             </td>
                                         </tr>
                                     );

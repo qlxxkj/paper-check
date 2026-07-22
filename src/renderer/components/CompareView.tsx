@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import '@fortawesome/fontawesome-free/css/all.min.css';
 
 interface CompareViewProps {
     docId: number;
@@ -192,7 +193,7 @@ const CompareView: React.FC<CompareViewProps> = ({ docId, docName, onClose }) =>
                     }}
                 >
                     <div style={{ fontSize: 16, fontWeight: 600, color: '#2d3748' }}>
-                        {/* 📄 {docName} */}📄 查看详情
+                        <i className="fa-regular fa-file-lines"></i> 查看详情
                     </div>
                     <button
                         onClick={onClose}
@@ -301,7 +302,7 @@ const CompareView: React.FC<CompareViewProps> = ({ docId, docName, onClose }) =>
                     }}
                 >
                     <div>
-                        💡 提示: 红色高亮部分为重复文本，左右滚动同步
+                        <i className="fa-solid fa-lightbulb" style={{color: '#e53e3e'}}></i> 提示: 红色高亮部分为重复文本，左右滚动同步
                     </div>
                     <div style={{ display: 'flex', gap: 24 }}>
                         <div>

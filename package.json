@@ -32,15 +32,18 @@
         "@types/react": "^18.2.0",
         "@types/react-dom": "^18.2.0",
         "copy-webpack-plugin": "^14.0.0",
+        "css-loader": "^7.1.4",
         "electron": "^21.4.4",
         "electron-builder": "^23.6.0",
         "electron-rebuild": "^3.2.9",
+        "style-loader": "^4.0.0",
         "ts-loader": "^9.5.0",
         "typescript": "^5.0.0",
         "webpack": "^5.88.0",
         "webpack-cli": "^5.1.0"
     },
     "dependencies": {
+        "@fortawesome/fontawesome-free": "^7.3.1",
         "adm-zip": "^0.6.0",
         "better-sqlite3": "^8.0.1",
         "diff": "^9.0.0",

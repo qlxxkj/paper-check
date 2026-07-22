@@ -37,7 +37,26 @@ module.exports = [
         },
         resolve: { extensions: ['.ts', '.tsx', '.js'] },
         module: {
-            rules: [{ test: /\.tsx?$/, use: 'ts-loader', exclude: /node_modules/ }]
+            rules: [
+                {
+                    test: /\.tsx?$/,
+                    use: 'ts-loader',
+                    exclude: /node_modules/
+                },
+                {
+                    // 处理 CSS 文件
+                    test: /\.css$/,
+                    use: ['style-loader', 'css-loader']
+                },
+                {
+                    // 处理字体文件（Font Awesome 需要）
+                    test: /\.(woff|woff2|eot|ttf|otf)$/,
+                    type: 'asset/resource',
+                    generator: {
+                        filename: 'fonts/[name].[hash][ext]'
+                    }
+                }
+            ]
         },
         plugins: [
             new CopyWebpackPlugin({

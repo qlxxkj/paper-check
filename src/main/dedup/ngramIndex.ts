@@ -30,7 +30,7 @@ export function buildNGramIndex(docId: number, paragraphs: string[], n: number =
 /**
  * 粗筛：给定新文档的段落，返回可能相似的候选文档ID列表（去重）
  */
-export function findCandidates(paragraphs: string[], n: number = 13): number[] {
+export function findCandidates(docId: number, paragraphs: string[], n: number = 13): number[] {
   const db = getDB();
   const allNgrams: string[] = [];
   for (const para of paragraphs) {
@@ -45,8 +45,8 @@ export function findCandidates(paragraphs: string[], n: number = 13): number[] {
   const uniqueNgrams = [...new Set(allNgrams)];
   const placeholders = uniqueNgrams.map(() => '?').join(',');
   const stmt = db.prepare(
-    `SELECT DISTINCT DocID FROM NGramIndex WHERE ngram IN (${placeholders}) AND DocID NOT IN (SELECT DocID FROM Document WHERE IsSource = 0)`
+    `SELECT DISTINCT DocID FROM NGramIndex WHERE ngram IN (${placeholders}) AND DocID != ?`
   );
-  const rows = stmt.all(...uniqueNgrams) as { DocID: number }[];
+  const rows = stmt.all(...uniqueNgrams, docId) as { DocID: number }[];
   return rows.map(r => r.DocID);
 }

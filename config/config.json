@@ -2,9 +2,10 @@
   "minMatchChars": 13,
   "sensitivity": 0.05,
   "enableRefFilter": true,
-    "fullDuplicateThreshold": 0.995,
-    "partialDuplicateThreshold": 0.1,
-    "diffThreshold": 0.02,
-    "ngramLength": 16,
-    "minSharedNgrams": 8
+  "fullDuplicateThreshold": 0.995,
+  "partialDuplicateThreshold": 0.1,
+  "diffThreshold": 0.02,
+  "ngramLength": 16,
+  "minSharedNgrams": 5,
+  "contextSize": 5
 }

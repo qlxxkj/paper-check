@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import '@fortawesome/fontawesome-free/css/all.min.css';
+import ContextView from './ContextViewer';
 
 interface CompareViewProps {
     docId: number;
     docName: string;
     onClose: () => void;
 }
+
 
 const CompareView: React.FC<CompareViewProps> = ({ docId, docName, onClose }) => {
     const [relations, setRelations] = useState<any[]>([]);
@@ -17,9 +18,36 @@ const CompareView: React.FC<CompareViewProps> = ({ docId, docName, onClose }) =>
     const [repeatRate, setRepeatRate] = useState(0);
     const [repeatParaCount, setRepeatParaCount] = useState(0);
 
+    const [contextView, setContextView] = useState<{
+        docId: number;
+        paraIndex: number;
+    } | null>(null);
+    const [contextData, setContextData] = useState<any[]>([]);
+    const [contextSize, setContextSize] = useState(3);
+
+
     useEffect(() => {
         loadRelations();
+        loadContextConfig();
     }, []);
+
+    const loadContextConfig = async () => {
+        try {
+            const cfg = await window.electronAPI.getConfig();
+            if (cfg && cfg.contextSize) {
+                setContextSize(cfg.contextSize);
+            }
+        } catch (_) { /* use default */ }
+    };
+
+    // 当 repeatRate 计算完成后，同步更新选中源文档的 pairRepeatRate
+    useEffect(() => {
+        if (selectedDoc && repeatRate >= 0) {
+            setRelations(prev => prev.map((r: any) =>
+                r.DocID === selectedDoc.DocID ? { ...r, pairRepeatRate: repeatRate } : r
+            ));
+        }
+    }, [repeatRate, selectedDoc?.DocID]);
 
     const loadRelations = async () => {
         setLoading(true);
@@ -52,11 +80,19 @@ const CompareView: React.FC<CompareViewProps> = ({ docId, docName, onClose }) =>
                     totalRepeatChars += repeatChars;
                     totalChars += r.doc1ParaText.length;
                 }
-                setRepeatRate(totalChars > 0 ? totalRepeatChars / totalChars : 0);
+                const rate = totalChars > 0 ? totalRepeatChars / totalChars : 0;
+                setRepeatRate(rate);
                 setRepeatParaCount(data.length);
+                // 更新选中源文档的 pairRepeatRate（useEffect 会同步到 relations 和 selectedDoc）
+                if (selectedDoc) {
+                    setSelectedDoc((prev: any) => prev ? { ...prev, pairRepeatRate: rate } : null);
+                }
             } else {
                 setRepeatRate(0);
                 setRepeatParaCount(0);
+                if (selectedDoc) {
+                    setSelectedDoc((prev: any) => prev ? { ...prev, pairRepeatRate: 0 } : null);
+                }
             }
         } catch (err) {
             console.error(err);
@@ -77,7 +113,53 @@ const CompareView: React.FC<CompareViewProps> = ({ docId, docName, onClose }) =>
         }
     };
 
+    // 处理查看上下文的函数
+    const handleShowContext = async (docId: number, paraIndex: number) => {
+        try {
+            console.log('[CompareView] 请求上下文:', { docId, paraIndex, contextSize });
+            const context = await window.electronAPI.getParagraphContext(docId, paraIndex, contextSize);
+            console.log('[CompareView] 返回上下文:', context);
+            if (context.length === 0) {
+                console.warn('[CompareView] 上下文为空，请检查 Paragraph 表是否有该文档的段落数据。');
+                // 尝试获取该文档的所有段落作为降级方案
+                const allParas = await window.electronAPI.getDocParagraphs(docId);
+                console.log('[CompareView] 该文档总段落数:', allParas.length);
+                if (allParas.length > 0) {
+                    // 如果总段落数大于0，但上下文为空，说明 paraIndex 可能超出范围，显示前后段落
+                    const total = allParas.length;
+                    const start = Math.max(0, paraIndex - contextSize - 1);
+                    const end = Math.min(total, paraIndex + contextSize);
+                    const fallback = allParas.slice(start, end);
+                    setContextData(fallback);
+                    setContextView({ docId, paraIndex });
+                    return;
+                }
+            }
+            setContextData(context);
+            setContextView({ docId, paraIndex });
+        } catch (err) {
+            console.error('[CompareView] 上下文获取失败:', err);
+            alert('获取上下文失败，请查看控制台');
+        }
+    };
+
+    // 安全获取点击的文档ID和段落索引
+    const getClickInfo = (side: 'doc1' | 'doc2', r: any) => {
+        if (side === 'doc1') {
+            return {
+                docId: r.DocID1 ?? r.docId1,
+                paraIdx: r.paraIndex1 ?? r.ParaIndex1,
+            };
+        } else {
+            return {
+                docId: r.DocID2 ?? r.docId2,
+                paraIdx: r.paraIndex2 ?? r.ParaIndex2,
+            };
+        }
+    };
+
     const renderDocWithDiff = (diffResults: any[], side: 'doc1' | 'doc2') => {
+
         if (!diffResults || diffResults.length === 0) {
             return <div style={{ padding: 20, color: '#888' }}>没有重复段落</div>;
         }
@@ -91,34 +173,13 @@ const CompareView: React.FC<CompareViewProps> = ({ docId, docName, onClose }) =>
                 highlights = [{ text: paraText, isHighlight: true }];
             }
 
-            // 如果高亮比例超过20%，整段高亮
-            const totalChars = paraText.length;
-            const highlightChars = highlights
-                .filter((h: any) => h.isHighlight)
-                .reduce((sum: number, h: any) => sum + h.text.length, 0);
-            const highlightRatio = totalChars > 0 ? highlightChars / totalChars : 0;
-            if (highlightRatio > 0.2 && totalChars > 0) {
-                highlights = [{ text: paraText, isHighlight: true }];
-            }
-            // 如果 highights 为空（理论上不会），整段显示但不标红
-            // if (highlights.length === 0) {
-            //     return (
-            //         <div
-            //             key={`${side}-${r.paraIndex1}-${r.paraIndex2}-${idx}`}
-            //             style={{
-            //                 marginBottom: 8,
-            //                 padding: '4px 10px',
-            //                 borderBottom: '1px solid #edf2f7',
-            //                 backgroundColor: '#fafafa',
-            //                 borderRadius: 4,
-            //             }}
-            //         >
-            //             <div style={{ fontSize: 12, color: '#555', marginBottom: 2, fontWeight: 600 }}>段落 {paraIndex}</div>
-            //             <div style={{ lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{paraText}</div>
-            //         </div>
-            //     );
-            // }
-
+            // 过滤 diff 段：左侧(doc1)去掉 added(仅属于doc2的文本)，右侧(doc2)去掉 removed(仅属于doc1的文本)
+            // diffChars 返回的是合并差异数组，必须按方向过滤才能还原各自原文
+            const filteredHighlights = highlights.filter((seg: any) => {
+                if (side === 'doc1') return !seg.added;
+                if (side === 'doc2') return !seg.removed;
+                return true;
+            });
 
             return (
                 <div
@@ -135,18 +196,31 @@ const CompareView: React.FC<CompareViewProps> = ({ docId, docName, onClose }) =>
                         段落 {paraIndex}
                     </div>
                     <div style={{ lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                        {highlights.map((seg: any, segIdx: number) => (
-                            <span
-                                key={segIdx}
-                                style={{
-                                    backgroundColor: seg.isHighlight ? '#ffcccc' : 'transparent',
-                                    fontWeight: seg.isHighlight ? 'bold' : 'normal',
-                                    color: seg.isHighlight ? '#c53030' : 'inherit',
-                                }}
-                            >
-                                {seg.text}
-                            </span>
-                        ))}
+                        {filteredHighlights.map((seg: any, segIdx: number) => {
+                            const isHighlight = seg.isHighlight;
+                            return (
+                                <span
+                                    key={segIdx}
+                                    style={{
+                                        backgroundColor: isHighlight ? '#ffcccc' : 'transparent',
+                                        fontWeight: isHighlight ? 'bold' : 'normal',
+                                        color: isHighlight ? '#c53030' : 'inherit',
+                                        cursor: isHighlight ? 'pointer' : 'default',
+                                    }}
+                                    onClick={
+                                        isHighlight
+                                            ? () => {
+                                                const info = getClickInfo(side, r);
+                                                console.log('[CompareView] 点击高亮:', info, { side });
+                                                handleShowContext(info.docId, info.paraIdx);
+                                            }
+                                            : undefined
+                                    }
+                                >
+                                    {seg.text}
+                                </span>
+                            );
+                        })}
                     </div>
                 </div>
             );
@@ -318,6 +392,14 @@ const CompareView: React.FC<CompareViewProps> = ({ docId, docName, onClose }) =>
                     </div>
                 </div>
             </div>
+            {contextView && (
+                <ContextView
+                    docId={contextView.docId}
+                    paraIndex={contextView.paraIndex}
+                    context={contextData}
+                    onClose={() => setContextView(null)}
+                />
+            )}
         </div>
     );
 };

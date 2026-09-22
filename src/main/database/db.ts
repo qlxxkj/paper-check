@@ -92,6 +92,18 @@ export function initDB() {
       FOREIGN KEY(DocID2) REFERENCES Document(DocID) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_diff_docs ON DiffResult(DocID1, DocID2);
+
+    CREATE TABLE IF NOT EXISTS CheckLog (
+        LogID INTEGER PRIMARY KEY AUTOINCREMENT,
+        ExecTime TEXT,
+        TotalFiles INTEGER,
+        SuccessCount INTEGER,
+        FailedCount INTEGER,
+        SkippedCount INTEGER,
+        FileList TEXT,
+        Details TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_log_time ON CheckLog(ExecTime);
   `);
     return db;
 }

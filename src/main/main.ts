@@ -16,6 +16,9 @@ import { backupDB, restoreDB } from './backup/backupRestore';
 import { DiffResult } from './dedup/diffComparator';
 import { autoUpdater } from 'electron-updater';  //自动更新
 
+// main.ts 顶部
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
+
 // 计算数据库路径
 function getDatabasePath(): string {
     if (app.isPackaged) {
@@ -176,7 +179,11 @@ function getAllWordFiles(dir: string): string[] {
             const stat = fs.statSync(fullPath);
             if (stat.isDirectory()) {
                 results = results.concat(getAllWordFiles(fullPath));
-            } else if (file.endsWith('.docx') || file.endsWith('.doc')) {
+            } else if (
+                file.endsWith('.docx') ||
+                file.endsWith('.doc') ||
+                file.endsWith('.pdf')
+            ) {
                 results.push(fullPath);
             }
         }
@@ -212,10 +219,16 @@ function computePairRepeatRate(
 // 读取配置文件（放在 registerIpcHandlers 之前）
 let appConfig: any = {};
 try {
-    const configPath = path.join(__dirname, '../config/config.json');
+    // 开发环境：项目根目录/config/config.json
+    // 打包后：与 app.asar 同级 resources/app/config/config.json
+    const configPath = process.env.NODE_ENV === 'production'
+        ? path.join(process.resourcesPath, 'app', 'config', 'config.json')
+        : path.join(__dirname, '../config/config.json');
+
+    console.log('[Config] 尝试读取:', configPath);
     const configContent = fs.readFileSync(configPath, 'utf-8');
     appConfig = JSON.parse(configContent);
-    // console.log('[Config] 加载配置成功:', appConfig);
+    console.log('[Config] 加载配置成功:', appConfig);
 } catch (err) {
     console.error('[Config] 加载配置失败，使用默认值:', err);
     // 默认值
@@ -223,12 +236,14 @@ try {
         fullDuplicateThreshold: 0.995,
         partialDuplicateThreshold: 0.01,
         diffThreshold: 0.01,
-        ngramLength: 13,
+        ngramLength: 16,
         minMatchChars: 13,
         sensitivity: 0.05,
         enableRefFilter: true,
-        minSharedNgrams: 5   // 默认值
+        minSharedNgrams: 5,   // 默认值
+        contextSize: 3        // 上下文引用范围默认值
     };
+    console.warn('[Config] 使用默认配置:', appConfig);
 }
 
 // 注册handlers
@@ -250,7 +265,9 @@ function registerIpcHandlers() {
     ipcMain.handle('open-file-dialog', async (event, options) => {
         const result = await dialog.showOpenDialog(mainWindow!, {
             properties: options?.properties || ['openFile', 'multiSelections'],
-            filters: [{ name: 'Word 文档', extensions: ['docx', 'doc'] }],
+            filters: [
+                { name: 'Word 文档', extensions: ['docx', 'doc', 'pdf'] }
+            ],
         });
         return result;
     });
@@ -259,7 +276,20 @@ function registerIpcHandlers() {
         const dbPath = getDatabasePath();
         return importFilesHandler(filePaths, (progress) => {
             event.sender.send('import-progress', progress);
-        }, appConfig, dbPath);
+        }, appConfig, dbPath).then(async (result) => {
+            // 写入操作日志
+            const { insertCheckLog } = require('./database/models');
+            insertCheckLog({
+                ExecTime: new Date().toISOString(),
+                TotalFiles: (result as any).success + (result as any).failed,
+                SuccessCount: (result as any).success,
+                FailedCount: (result as any).failed,
+                SkippedCount: (result as any).skipped,
+                FileList: JSON.stringify(filePaths),
+                Details: '导入文件',
+            });
+            return result;
+        });
     });
 
     ipcMain.handle('import-folder', async (event, folderPath: string) => {
@@ -270,7 +300,19 @@ function registerIpcHandlers() {
         const dbPath = getDatabasePath();
         return importFilesHandler(files, (progress) => {
             event.sender.send('import-progress', progress);
-        }, appConfig, dbPath);
+        }, appConfig, dbPath).then(async (result) => {
+            const { insertCheckLog } = require('./database/models');
+            insertCheckLog({
+                ExecTime: new Date().toISOString(),
+                TotalFiles: (result as any).success + (result as any).failed,
+                SuccessCount: (result as any).success,
+                FailedCount: (result as any).failed,
+                SkippedCount: (result as any).skipped,
+                FileList: JSON.stringify(files),
+                Details: '导入文件夹',
+            });
+            return result;
+        });
     });
 
     ipcMain.handle('import-mixed', async (event, paths: string[]) => {
@@ -281,7 +323,7 @@ function registerIpcHandlers() {
                 if (stat.isDirectory()) {
                     const files = getAllWordFiles(p);
                     allFiles.push(...files);
-                } else if (stat.isFile() && (p.endsWith('.docx') || p.endsWith('.doc'))) {
+                } else if (stat.isFile() && (p.endsWith('.docx') || p.endsWith('.doc') || p.endsWith('.pdf'))) {
                     allFiles.push(p);
                 }
             } catch (err) {
@@ -294,7 +336,19 @@ function registerIpcHandlers() {
         const dbPath = getDatabasePath();
         return importFilesHandler(allFiles, (progress) => {
             event.sender.send('import-progress', progress);
-        }, appConfig, dbPath);
+        }, appConfig, dbPath).then(async (result) => {
+            const { insertCheckLog } = require('./database/models');
+            insertCheckLog({
+                ExecTime: new Date().toISOString(),
+                TotalFiles: (result as any).success + (result as any).failed,
+                SuccessCount: (result as any).success,
+                FailedCount: (result as any).failed,
+                SkippedCount: (result as any).skipped,
+                FileList: JSON.stringify(allFiles),
+                Details: '批量导入',
+            });
+            return result;
+        });
     });
 
     ipcMain.handle('get-source-docs', async () => {
@@ -317,6 +371,12 @@ function registerIpcHandlers() {
 
     ipcMain.handle('clear-all', async () => {
         return deleteAllData();
+    });
+
+    // 重建所有文档的 N-gram 索引（用于 ngramLength 变更后的数据修复）
+    ipcMain.handle('rebuild-ngram-index', async () => {
+        const { rebuildNGramIndex } = require('./database/models');
+        return rebuildNGramIndex(appConfig.ngramLength || 16);
     });
 
     ipcMain.handle('export-docs-zip', async (event, docIds: number[]) => {
@@ -363,7 +423,7 @@ function registerIpcHandlers() {
     // 获取重复关系：计算两两重复率，并按重复率降序排列
     ipcMain.handle('get-repeat-relations', async (_, docId: number) => {
         const db = getDB();
-        const minSharedNgrams = appConfig.minSharedNgrams || 5; // 读取配置
+        const minSharedNgrams = appConfig.minSharedNgrams || 5;
         // 获取当前文档的所有 N-gram
         const ngramStmt = db.prepare('SELECT DISTINCT ngram FROM NGramIndex WHERE DocID = ?');
         const ngramRows = ngramStmt.all(docId) as { ngram: string }[];
@@ -376,15 +436,64 @@ function registerIpcHandlers() {
         INNER JOIN NGramIndex idx ON d.DocID = idx.DocID
         WHERE idx.ngram IN (${placeholders})
           AND d.DocID != ?
-          AND d.IsSource = 1
         GROUP BY d.DocID
-        HAVING COUNT(DISTINCT idx.ngram) >= ${minSharedNgrams}   -- 至少共享5个N-gram，降低门槛确保召回
+        HAVING COUNT(DISTINCT idx.ngram) >= ${minSharedNgrams}
         ORDER BY d.CreateTime ASC
     `);
-        console.log('[get-repeat-relations] minSharedNgrams =', minSharedNgrams);//新增日志
+        console.log('[get-repeat-relations] minSharedNgrams =', minSharedNgrams);
         const rows = stmt.all(...ngrams, docId) as { DocID: number; FileName: string; RepeatRate: number; RepeatStatus: number }[];
-        return rows;
+        if (rows.length === 0) return [];
+
+        // 批量获取所有相关文档的段落哈希，单次查询代替 N 次查询
+        const targetDocIds = rows.map(r => r.DocID);
+        const placeholders2 = targetDocIds.map(() => '?').join(',');
+        const paraStmt = db.prepare(`
+            SELECT DocID, ParaHash, Length FROM Paragraph
+            WHERE DocID IN (${placeholders2})
+        `);
+        const allParas = paraStmt.all(...targetDocIds) as { DocID: number; ParaHash: string; Length: number }[];
+
+        // 按 DocID 分组
+        const paraByDoc = new Map<number, { hash: string; length: number }[]>();
+        for (const p of allParas) {
+            if (!paraByDoc.has(p.DocID)) paraByDoc.set(p.DocID, []);
+            paraByDoc.get(p.DocID)!.push({ hash: p.ParaHash, length: p.Length });
+        }
+
+        // 当前文档的段落
+        const currentParaStmt = db.prepare('SELECT ParaHash, Length FROM Paragraph WHERE DocID = ?');
+        const currentParas = currentParaStmt.all(docId) as { ParaHash: string; Length: number }[];
+
+        // 在内存中计算重复率，避免 N 次 DB 查询
+        const results = rows.map(row => {
+            try {
+                const targetParas = paraByDoc.get(row.DocID) || [];
+                const targetHashSet = new Set(targetParas.map(p => p.hash));
+                let repeatWordCount = 0;
+                let repeatParaCount = 0;
+                for (const p of currentParas) {
+                    if (targetHashSet.has(p.ParaHash)) {
+                        repeatWordCount += p.Length;
+                        repeatParaCount++;
+                    }
+                }
+                const totalWordCount = currentParas.reduce((s, p) => s + p.Length, 0);
+                const pairRepeatRate = totalWordCount > 0 ? repeatWordCount / totalWordCount : 0;
+                return {
+                    ...row,
+                    pairRepeatRate,
+                    duplicateParagraphCount: repeatParaCount,
+                };
+            } catch {
+                return { ...row, pairRepeatRate: 0, duplicateParagraphCount: 0 };
+            }
+        });
+
+        // 按重复率降序排列，优先显示最相似的对比文档
+        results.sort((a, b) => (b.pairRepeatRate || 0) - (a.pairRepeatRate || 0));
+        return results;
     });
+
 
     // 获取两个文档的 Diff 高亮结果（优先从缓存读取，否则实时计算）
     ipcMain.handle('get-duplicate-paragraphs', async (_, docId1: number, docId2: number) => {
@@ -403,13 +512,17 @@ function registerIpcHandlers() {
             if (rows.length > 0) {
                 return rows.map(r => ({
                     ...r,
-                    highlights: JSON.parse(r.Highlights),
+                    DocID1: r.DocID1,
+                    DocID2: r.DocID2,
                     paraIndex1: r.ParaIndex1,
                     paraIndex2: r.ParaIndex2,
+                    docId1: r.DocID1,
+                    docId2: r.DocID2,
+                    highlights: JSON.parse(r.Highlights),
                 }));
             }
 
-            // 2. 交换顺序查询
+            // 2. 交换顺序查询（缓存中可能以相反顺序存储）
             stmt = db.prepare(`
             SELECT dr.*, p1.ParaText as doc1ParaText, p2.ParaText as doc2ParaText
             FROM DiffResult dr
@@ -420,24 +533,42 @@ function registerIpcHandlers() {
         `);
             rows = stmt.all(docId2, docId1) as any[];
             if (rows.length > 0) {
-                return rows.map(r => ({
-                    docId1: r.DocID1,
-                    docId2: r.DocID2,
-                    paraIndex1: r.ParaIndex1,
-                    paraIndex2: r.ParaIndex2,
-                    doc1ParaText: r.doc2ParaText,
-                    doc2ParaText: r.doc1ParaText,
-                    highlights: JSON.parse(r.Highlights),
-                }));
+                // DB 存储顺序是 (DocID1=source, DocID2=new)，需要反转以确保 doc1 始终是调用方传入的 docId1
+                // 同时需要翻转 highlights 中的 added/removed 标记，因为 diff 方向颠倒了
+                return rows.map(r => {
+                    const highlights = JSON.parse(r.Highlights);
+                    const swappedHighlights = highlights.map((seg: any) => {
+                        if (seg.added !== undefined || seg.removed !== undefined) {
+                            return {
+                                ...seg,
+                                added: seg.removed || false,
+                                removed: seg.added || false,
+                            };
+                        }
+                        return seg;
+                    });
+                    return {
+                        docId1,
+                        docId2,
+                        DocID1: docId1,
+                        DocID2: docId2,
+                        paraIndex1: r.ParaIndex2,
+                        paraIndex2: r.ParaIndex1,
+                        doc1ParaText: r.doc2ParaText,
+                        doc2ParaText: r.doc1ParaText,
+                        highlights: swappedHighlights,
+                    };
+                });
             }
 
-            // 3. 实时计算
+            // 3. 实时计算（缓存未命中）
             console.log(`[Compare] 实时计算文档 ${docId1} 与 ${docId2}`);
             const { compareDocs } = require('./dedup/diffComparator');
             let results = compareDocs(docId1, docId2, 0.001);
             if (results.length === 0) {
                 console.warn(`[Compare] diff 无结果，降级为哈希匹配`);
                 const { getParagraphsByDoc } = require('./database/models');
+                const { diffParagraphs } = require('./dedup/diffComparator');
                 const paras1 = getParagraphsByDoc(docId1) as { ParaIndex: number; ParaText: string; ParaHash: string }[];
                 const paras2 = getParagraphsByDoc(docId2) as { ParaIndex: number; ParaText: string; ParaHash: string }[];
                 const hashSet = new Set(paras2.map(p => p.ParaHash));
@@ -445,26 +576,37 @@ function registerIpcHandlers() {
                 if (duplicates1.length > 0) {
                     results = duplicates1.map(p1 => {
                         const p2 = paras2.find(p => p.ParaHash === p1.ParaHash)!;
+                        // 使用 diffParagraphs 生成带 added/removed 标记的正确高亮段，确保两侧各显原文
+                        const properHighlights = diffParagraphs(p1.ParaText, p2.ParaText);
                         return {
                             docId1,
                             docId2,
+                            DocID1: docId1,
+                            DocID2: docId2,
                             paraIndex1: p1.ParaIndex,
                             paraIndex2: p2.ParaIndex,
                             doc1ParaText: p1.ParaText,
                             doc2ParaText: p2.ParaText,
-                            highlights: [{ text: p1.ParaText, isHighlight: true }],
+                            highlights: properHighlights,
                         };
                     });
                 }
             }
-            return results;
+            // 统一规范化输出格式，确保前端能正确读取 DocID1/DocID2 和 paraIndex1/paraIndex2
+            return results.map((r: any) => ({
+                ...r,
+                DocID1: r.DocID1 ?? r.docId1,
+                DocID2: r.DocID2 ?? r.docId2,
+                paraIndex1: r.paraIndex1 ?? r.ParaIndex1,
+                paraIndex2: r.paraIndex2 ?? r.ParaIndex2,
+            }));
         } catch (err) {
             console.error('[Compare] 获取重复段落失败:', err);
             return [];
         }
     });
 
-
+    // 打开文档
     ipcMain.handle('open-doc', async (_, filePath: string) => {
         try {
             const { shell } = require('electron');
@@ -477,22 +619,25 @@ function registerIpcHandlers() {
         }
     });
 
-
+    // 单个删除
     ipcMain.handle('delete-doc', async (_, docId: number) => {
         return deleteDoc(docId);
     });
 
+    // 批量删除
     ipcMain.handle('batch-delete', async (_, docIds: number[]) => {
-        let successCount = 0,
-            failCount = 0;
-        for (const id of docIds) {
-            if (deleteDoc(id)) successCount++;
-            else failCount++;
-        }
-        return { successCount, failCount };
+        // let successCount = 0,
+        //     failCount = 0;
+        // for (const id of docIds) {
+        //     if (deleteDoc(id)) successCount++;
+        //     else failCount++;
+        // }
+        // return { successCount, failCount };
+        const { batchDeleteDocs } = require('./database/models');
+        return batchDeleteDocs(docIds);
     });
 
-
+    // 批量标记源文档
     ipcMain.handle('batch-mark-source', async (_, docIds: number[]) => {
         try {
             markDocsAsSource(docIds);
@@ -561,10 +706,209 @@ function registerIpcHandlers() {
         }
     });
 
-    // 获取 Diff 结果（已被 get-duplicate-paragraphs 覆盖，但保留兼容）
-    ipcMain.handle('get-doc-diff', async (_, docId1: number, docId2: number) => {
-        // 重定向到 get-duplicate-paragraphs
-        return ipcMain.emit('get-duplicate-paragraphs', _, docId1, docId2);
+    // 获取待确认文档（查重列表）
+    ipcMain.handle('get-pending-docs', async () => {
+        const { getPendingDocs } = require('./database/models');
+        return getPendingDocs();
+    });
+
+    // 获取段落上下文
+    // src/main/main.ts
+    ipcMain.handle('get-paragraph-context', async (_, docId: number, paraIndex: number, contextSize: number = 3) => {
+        console.log('[上下文] 收到请求:', { docId, paraIndex, contextSize });
+        const db = getDB();
+        const start = Math.max(1, paraIndex - contextSize);
+        const end = paraIndex + contextSize;
+        console.log('[上下文] 查询范围:', { start, end });
+
+        const stmt = db.prepare(`
+            SELECT ParaIndex, ParaText
+            FROM Paragraph
+            WHERE DocID = ? AND ParaIndex BETWEEN ? AND ?
+            ORDER BY ParaIndex
+        `);
+        const rows = stmt.all(docId, start, end) as { ParaIndex: number; ParaText: string }[];
+        console.log('[上下文] 返回行数:', rows.length);
+        return rows;
+    });
+
+    // 日志
+    ipcMain.handle('get-check-logs', async () => {
+        const { getCheckLogs } = require('./database/models');
+        return getCheckLogs(200); // 最近200条
+    });
+
+    // 批量导入存量文档（不查重）
+    ipcMain.handle('import-legacy-files', async (event, filePaths: string[]) => {
+        const { parseWordFile } = require('./parser/wordParser');
+        const { batchInsertLegacyDocs } = require('./database/models');
+        const results = [];
+        for (const filePath of filePaths) {
+            try {
+                const parsed = await parseWordFile(filePath);
+                // 不查重，直接插入
+                const doc = {
+                    FileName: parsed.fileName,
+                    FilePath: parsed.filePath,
+                    FileSize: parsed.fileSize,
+                    ParagraphCount: parsed.paragraphs.length,
+                    WordCount: parsed.fullText.length,
+                    FullTextHash: '', // 不计算哈希
+                    IsSource: 1,
+                    RepeatStatus: 0, // 未查重
+                    RepeatRate: 0,
+                    CreateTime: new Date().toISOString(),
+                    ExcludedRefWords: 0,
+                };
+                batchInsertLegacyDocs([doc]);
+                results.push({ filePath, status: 'success' });
+            } catch (err: any) {
+                results.push({ filePath, status: 'failed', error: err.message });
+            }
+        }
+        return results;
+    });
+
+    // 批量导入文件夹中的存量文档（不查重，用于初始化已人工查重过的文档）
+    ipcMain.handle('import-legacy-folder', async (event, folderPath: string) => {
+        event.sender.send('import-progress', { type: 'start', total: 0, status: '扫描文件夹...' });
+
+        const { parseWordFile } = require('./parser/wordParser');
+        const { batchInsertLegacyDocs } = require('./database/models');
+
+        // 递归扫描文件夹中的所有 .docx / .doc 文件
+        function scanFiles(dir: string): string[] {
+            const files: string[] = [];
+            const entries = fs.readdirSync(dir);
+            for (const entry of entries) {
+                const fullPath = path.join(dir, entry);
+                try {
+                    const stat = fs.statSync(fullPath);
+                    if (stat.isDirectory()) {
+                        files.push(...scanFiles(fullPath));
+                    } else if (entry.toLowerCase().endsWith('.docx') || entry.toLowerCase().endsWith('.doc')) {
+                        files.push(fullPath);
+                    }
+                } catch (_) { /* 跳过无法访问的文件 */ }
+            }
+            return files;
+        }
+
+        const filePaths = scanFiles(folderPath);
+        const total = filePaths.length;
+        let success = 0;
+        let failed = 0;
+        const results: { filePath: string; status: 'success' | 'failed'; error?: string }[] = [];
+
+        event.sender.send('import-progress', { type: 'start', total, status: `找到 ${total} 个 Word 文档` });
+
+        for (let i = 0; i < filePaths.length; i++) {
+            const filePath = filePaths[i];
+            const fileName = path.basename(filePath);
+            event.sender.send('import-progress', {
+                type: 'progress',
+                file: fileName,
+                index: i + 1,
+                total,
+                status: '解析中...',
+            });
+            try {
+                const parsed = await parseWordFile(filePath);
+                const doc = {
+                    FileName: parsed.fileName,
+                    FilePath: parsed.filePath,
+                    FileSize: parsed.fileSize,
+                    ParagraphCount: parsed.paragraphs.length,
+                    WordCount: parsed.fullText.length,
+                    FullTextHash: '',
+                    IsSource: 1,
+                    RepeatStatus: 0,
+                    RepeatRate: 0,
+                    CreateTime: new Date().toISOString(),
+                    ExcludedRefWords: 0,
+                };
+                const { batchInsertLegacyDocs, insertParagraphs } = require('./database/models');
+                const { buildNGramIndex } = require('./dedup/ngramIndex');
+                const { hashText } = require('./dedup/hashComparator');
+                const docId = batchInsertLegacyDocs([doc]);
+                // 插入段落
+                const paras = parsed.paragraphs.map((text: string, idx: number) => ({
+                    DocID: docId,
+                    ParaIndex: idx + 1,
+                    ParaText: text,
+                    ParaHash: hashText(text),
+                    Length: text.length,
+                }));
+                insertParagraphs(paras);
+                // 构建 N-gram 索引，使该文档能参与后续查重比对
+                buildNGramIndex(docId, parsed.paragraphs, appConfig.ngramLength || 16);
+                success++;
+                results.push({ filePath, status: 'success' });
+            } catch (err: any) {
+                failed++;
+                results.push({ filePath, status: 'failed', error: err.message });
+            }
+            event.sender.send('import-progress', {
+                type: 'progress',
+                file: fileName,
+                index: i + 1,
+                total,
+                status: '完成',
+                success,
+                failed,
+            });
+        }
+
+        event.sender.send('import-progress', {
+            type: 'done',
+            success,
+            failed,
+            skipped: 0,
+        });
+
+        // 写入操作日志
+        const { insertCheckLog } = require('./database/models');
+        insertCheckLog({
+            ExecTime: new Date().toISOString(),
+            TotalFiles: success + failed,
+            SuccessCount: success,
+            FailedCount: failed,
+            SkippedCount: 0,
+            FileList: JSON.stringify(filePaths.slice(0, 10)), // 只记录前10个
+            Details: `批量导入存量文档: ${success}个成功, ${failed}个失败`,
+        });
+
+        return results;
+    });
+
+    // ipcMain.handle('get-doc-paragraphs', async (_, docId: number) => {
+    //     const db = getDB();
+    //     return db.prepare('SELECT ParaIndex, ParaText FROM Paragraph WHERE DocID = ? ORDER BY ParaIndex').all(docId);
+    // });
+
+    // 配置文件路径（与顶部加载逻辑一致）
+    function getConfigPath(): string {
+        return process.env.NODE_ENV === 'production'
+            ? path.join(process.resourcesPath, 'app', 'config', 'config.json')
+            : path.join(__dirname, '../config/config.json');
+    }
+
+    ipcMain.handle('getConfig', async () => {
+        return appConfig;
+    });
+
+    ipcMain.handle('saveConfig', async (_, config: any) => {
+        try {
+            const configPath = getConfigPath();
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+            // 更新内存中的配置
+            appConfig = { ...appConfig, ...config };
+            console.log('[Config] 配置已保存到:', configPath);
+            return { success: true };
+        } catch (err: any) {
+            console.error('[Config] 保存配置失败:', err);
+            return { success: false, error: err.message };
+        }
     });
 
 }

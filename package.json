@@ -1,6 +1,6 @@
 {
     "name": "paper-check",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "单机版Word文档批量解析、查重与存储系统",
     "keywords": [
         "paper",
@@ -29,8 +29,10 @@
         "@types/better-sqlite3": "^7.6.5",
         "@types/diff": "^7.0.2",
         "@types/node": "^20.19.43",
+        "@types/pdf-parse": "^1.1.5",
         "@types/react": "^18.2.0",
         "@types/react-dom": "^18.2.0",
+        "@types/word-extractor": "^1.0.6",
         "copy-webpack-plugin": "^14.0.0",
         "css-loader": "^7.1.4",
         "electron": "^21.4.4",
@@ -50,8 +52,10 @@
         "electron-updater": "^6.8.9",
         "mammoth": "^1.12.0",
         "pdf-parse": "^2.4.5",
+        "pdf2json": "^4.0.3",
         "react": "^18.2.0",
-        "react-dom": "^18.3.1"
+        "react-dom": "^18.3.1",
+        "word-extractor": "^1.0.4"
     },
     "build": {
         "appId": "com.lushengshuzi.papercheck",

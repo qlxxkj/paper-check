@@ -6,32 +6,35 @@ import {
     insertDocument,
     insertParagraphs,
     updateDocRepeatStatus,
-    markAsSource,
     storeDiffResults,
 } from '../database/models';
 import { Document } from '../../shared/types';
 import { buildNGramIndex, findCandidates } from '../dedup/ngramIndex';
 import { compareDocs, DiffResult } from '../dedup/diffComparator';
-
 import { setDBPath, getDB } from '../database/db';
 
-const { filePaths, config, dbPath } = workerData;
+const { filePaths, config, dbPath, total, startIndex } = workerData;
 
 // 设置数据库路径
 setDBPath(dbPath);
-console.log('[Worker] 数据库路径:', dbPath);
+console.log('[Worker] 数据库路径:', dbPath, '文件范围:', startIndex, '~', startIndex + filePaths.length);
 
-// 初始化数据库（如果尚未初始化）
+// 初始化数据库，设置超时让 SQLite 等待锁释放（多线程写操作安全）
 const db = getDB();
-
+db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 10000');
 
 async function processFiles() {
-    console.log('[ImportWorker] 收到配置:', config);// 新增日志
+    console.log('[ImportWorker] 收到配置:', config);
     let success = 0,
         failed = 0,
         skipped = 0;
+    const fileCount = filePaths.length;
 
-    for (const filePath of filePaths) {
+    for (let i = 0; i < fileCount; i++) {
+        const filePath = filePaths[i];
+        const globalIndex = startIndex + i; // 全局文件序号（从0开始）
+
         try {
             // 1. 解析文档
             const parsed = await parseWordFile(filePath);
@@ -50,6 +53,11 @@ async function processFiles() {
                     file: filePath,
                     status: 'skipped',
                     reason: '无有效段落',
+                    index: globalIndex,     // 全局序号（0-based）
+                    total,                  // 总文件数
+                    success,
+                    failed,
+                    skipped,
                 });
                 continue;
             }
@@ -83,11 +91,12 @@ async function processFiles() {
             insertParagraphs(paras);
 
             // ====== 新查重流程 ======
+            const ngramLen = config?.ngramLength || 16;
             // 构建 N-gram 索引
-            buildNGramIndex(docId, paragraphs, 13);
+            buildNGramIndex(docId, paragraphs, ngramLen);
 
-            // 粗筛候选源文档
-            const candidateIds = findCandidates(paragraphs, 13);
+            // 粗筛候选源文档（findCandidates 已排除自身）
+            const candidateIds = findCandidates(docId, paragraphs, ngramLen);
             let highestRate = 0;
             let bestMatchDocId = -1;
             let bestDiffResults: DiffResult[] = [];
@@ -117,7 +126,7 @@ async function processFiles() {
             updateDocRepeatStatus(docId, status, highestRate);
 
             if (highestRate === 0) {
-                markAsSource(docId);
+                // 不自动标记为源文档，保持 IsSource=0，让用户在查重列表中确认
                 parentPort?.postMessage({
                     type: 'progress',
                     file: filePath,
@@ -125,6 +134,11 @@ async function processFiles() {
                     docId,
                     repeatRate: 0,
                     isSource: true,
+                    index: globalIndex,
+                    total,
+                    success,
+                    failed,
+                    skipped,
                 });
             } else {
                 if (bestMatchDocId !== -1 && bestDiffResults.length > 0) {
@@ -143,6 +157,11 @@ async function processFiles() {
                     repeatRate: highestRate,
                     isSource: false,
                     repeatParaCount: bestDiffResults.length,
+                    index: globalIndex,
+                    total,
+                    success,
+                    failed,
+                    skipped,
                 });
             }
 
@@ -154,6 +173,11 @@ async function processFiles() {
                 file: filePath,
                 status: 'failed',
                 error: err.message || '未知错误',
+                index: globalIndex,
+                total,
+                success,
+                failed,
+                skipped,
             });
         }
     }

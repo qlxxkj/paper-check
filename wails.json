@@ -4,9 +4,10 @@
   "outputfilename": "paper-check",
   "frontend:install": "npm install",
   "frontend:build": "node build-frontend.cjs",
-  "frontend:dev:watcher": "cd frontend && npx webpack --mode development --watch",
+  "frontend:dev:watcher": "node build-frontend-dev.cjs",
   "frontend:dev:serverUrl": "auto",
   "frontend:dir": "frontend",
+  "build:tag": ["desktop"],
   "author": {
     "name": "qlxxkj",
     "email": "a8926764@gmail.com"

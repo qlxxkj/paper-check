@@ -9,11 +9,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/pkg/browser"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"paper-check/internal/backup"
@@ -59,11 +59,7 @@ func (a *App) initApp() {
 	}
 	a.db = d
 	a.cfg = config.LoadConfig()
-	antiwordPath := "resources/antiword/antiword.exe"
-	if wd, err := os.Getwd(); err == nil {
-		antiwordPath = filepath.Join(wd, "resources", "antiword", "antiword.exe")
-	}
-	a.importer = importsvc.New(d, a.cfg, antiwordPath, a.emitProgress)
+	a.importer = importsvc.New(d, a.cfg, a.emitProgress)
 }
 
 // 数据库路径：开发用 ./databases/app.db
@@ -109,8 +105,9 @@ func (a *App) SaveFileDialog(defaultPath string) string {
 }
 
 // OpenDoc 用系统默认程序打开文件（对齐 open-doc / shell.openPath）
+// 使用 pkg/browser（跨平台：Windows 用 rundll32、macOS 用 open、Linux 用 xdg-open）
 func (a *App) OpenDoc(filePath string) map[string]interface{} {
-	if err := exec.Command("rundll32", "url.dll,FileProtocolHandler", filePath).Start(); err != nil {
+	if err := browser.OpenFile(filePath); err != nil {
 		return map[string]interface{}{"success": false, "error": err.Error()}
 	}
 	return map[string]interface{}{"success": true}

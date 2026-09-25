@@ -40,22 +40,20 @@ type ImportResult struct {
 
 // ImportService 并发导入服务：goroutine 池替代原 worker_threads（4 并发）
 type ImportService struct {
-	db       *sql.DB
-	config   config.AppConfig
-	antiword string
-	ctx      context.Context
-	workers  int
-	emit     func(event string, payload any) // Wails runtime.EventsEmit 注入
+	db      *sql.DB
+	config  config.AppConfig
+	ctx     context.Context
+	workers int
+	emit    func(event string, payload any) // Wails runtime.EventsEmit 注入
 }
 
 // New 创建导入服务。emit 由 main 注入（runtime.EventsEmit）。
-func New(d *sql.DB, cfg config.AppConfig, antiwordPath string, emit func(string, any)) *ImportService {
+func New(d *sql.DB, cfg config.AppConfig, emit func(string, any)) *ImportService {
 	return &ImportService{
-		db:       d,
-		config:   cfg,
-		antiword: antiwordPath,
-		workers:  4,
-		emit:     emit,
+		db:      d,
+		config:  cfg,
+		workers: 4,
+		emit:    emit,
 	}
 }
 
@@ -143,7 +141,7 @@ func (s *ImportService) processChunk(files []string, startIndex int) workerStats
 // processOneFile 处理单个文件。返回 "success" / "skipped"；失败返回 error
 func (s *ImportService) processOneFile(filePath string, ngramLen, globalIndex, total int) (string, error) {
 	// 1. 解析
-	parsed, err := parser.ParseWordFile(filePath, s.antiword)
+	parsed, err := parser.ParseWordFile(filePath)
 	if err != nil {
 		s.emitProgress(Progress{Type: "progress", File: filePath, Status: "failed", Error: err.Error(),
 			Index: globalIndex, Total: total})

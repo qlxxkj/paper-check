@@ -10,7 +10,7 @@ import (
 
 // parseAndInsertLegacy 解析并插入存量文档（不查重），对齐 main.ts 的 import-legacy-files/folder
 func parseAndInsertLegacy(d *sql.DB, filePath string) (parser.ParsedResult, error) {
-	parsed, err := parser.ParseWordFile(filePath, "")
+	parsed, err := parser.ParseWordFile(filePath)
 	if err != nil {
 		return parser.ParsedResult{}, err
 	}

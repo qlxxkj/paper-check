@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -41,9 +40,9 @@ type wordText struct {
 
 // 解析 Word/PDF 文件（对齐 parseWordFile）。
 // .docx → 标准库解 zip + 解 XML 抽段落文本（等价 mammoth.extractRawText 的输出）
-// .doc  → 调 antiword 子进程（复用 resources/antiword）
+// .doc  → 旧版 OLE2 二进制格式，无跨平台纯 Go 解析库；提示用户转存为 .docx
 // .pdf  → 不支持（原实现即 throw）
-func ParseWordFile(filePath, antiwordPath string) (ParsedResult, error) {
+func ParseWordFile(filePath string) (ParsedResult, error) {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	var text string
 	var paragraphs []string
@@ -59,12 +58,9 @@ func ParseWordFile(filePath, antiwordPath string) (ParsedResult, error) {
 	case ".pdf":
 		return ParsedResult{}, fmt.Errorf("不支持pdf的文件格式")
 	case ".doc":
-		t, err := parseDocWithAntiword(filePath, antiwordPath)
-		if err != nil {
-			return ParsedResult{}, err
-		}
-		text = t
-		paragraphs = splitParagraphs(t)
+		// 旧版 Word 二进制格式（OLE2）。Go 生态无成熟纯 Go 解析库，
+		// 为保证跨平台，统一引导用户转存为 .docx 后再导入。
+		return ParsedResult{}, fmt.Errorf("暂不支持旧版 .doc 格式，请用 Word 另存为 .docx 后再导入: %s", filePath)
 	default:
 		return ParsedResult{}, fmt.Errorf("不支持的文件格式: %s", ext)
 	}
@@ -140,36 +136,6 @@ func parseDocx(filePath string) (string, error) {
 		}
 	}
 	return sb.String(), nil
-}
-
-// parseDocWithAntiword 调 antiword 抽老式 .doc 文本
-func parseDocWithAntiword(filePath, antiwordPath string) (string, error) {
-	if antiwordPath == "" {
-		// 相对当前目录找 resources/antiword（可执行文件为 antiword.exe）
-		candidates := []string{
-			filepath.Join("resources", "antiword", "antiword.exe"),
-			filepath.Join(".", "antiword", "antiword.exe"),
-			filepath.Join("resources", "antiword.exe"),
-		}
-		for _, c := range candidates {
-			if _, err := os.Stat(c); err == nil {
-				antiwordPath = c
-				break
-			}
-		}
-	}
-	if antiwordPath == "" {
-		return "", fmt.Errorf(".doc 解析失败: 找不到 antiword 可执行文件")
-	}
-	cmd := exec.Command(antiwordPath, filePath)
-	out, err := cmd.Output()
-	if err != nil {
-		if errExit, ok := err.(*exec.ExitError); ok {
-			return "", fmt.Errorf(".doc 解析失败: %s", strings.TrimSpace(string(errExit.Stderr)))
-		}
-		return "", fmt.Errorf(".doc 解析失败: %w", err)
-	}
-	return string(out), nil
 }
 
 // 去除文末参考文献（对齐 src/main/parser/refFilter.ts 的 filterReferences）

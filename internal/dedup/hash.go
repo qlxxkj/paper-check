@@ -2,8 +2,9 @@ package dedup
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
 	"database/sql"
+	"encoding/hex"
+	"strings"
 )
 
 // HashText 对齐 src/main/dedup/hashComparator.ts：SHA-256 hex。
@@ -50,11 +51,32 @@ func FindCandidates(d *sql.DB, docId int, paragraphs []string, n int) ([]int, er
 	if len(allNgrams) == 0 {
 		return nil, nil
 	}
-	// 用集合逐个查，避免超长 IN 子句
-	var candidates []int
+	// 批量 IN 查询（分块，避开 SQLite 单条 ~999 参数上限）。
+	// 原来逐个 ngram 各发一条 SQL（上万次往返），现在压成几十次，
+	// 存量库越大、增量文档越多，粗筛越快。
+	ngrams := make([]string, 0, len(allNgrams))
+	for ng := range allNgrams {
+		ngrams = append(ngrams, ng)
+	}
+
+	const chunk = 900
 	seen := map[int]struct{}{}
-	for ngram := range allNgrams {
-		rows, err := d.Query(`SELECT DISTINCT DocID FROM NGramIndex WHERE ngram = ? AND DocID != ?`, ngram, docId)
+	var candidates []int
+	for i := 0; i < len(ngrams); i += chunk {
+		end := i + chunk
+		if end > len(ngrams) {
+			end = len(ngrams)
+		}
+		args := make([]interface{}, 0, end-i+1)
+		placeholders := make([]string, 0, end-i)
+		for _, ng := range ngrams[i:end] {
+			placeholders = append(placeholders, "?")
+			args = append(args, ng)
+		}
+		args = append(args, docId)
+		sql := `SELECT DISTINCT DocID FROM NGramIndex WHERE ngram IN (` +
+			strings.Join(placeholders, ",") + `) AND DocID != ?`
+		rows, err := d.Query(sql, args...)
 		if err != nil {
 			return nil, err
 		}

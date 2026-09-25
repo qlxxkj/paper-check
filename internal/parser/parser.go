@@ -58,9 +58,14 @@ func ParseWordFile(filePath string) (ParsedResult, error) {
 	case ".pdf":
 		return ParsedResult{}, fmt.Errorf("不支持pdf的文件格式")
 	case ".doc":
-		// 旧版 Word 二进制格式（OLE2）。Go 生态无成熟纯 Go 解析库，
-		// 为保证跨平台，统一引导用户转存为 .docx 后再导入。
-		return ParsedResult{}, fmt.Errorf("暂不支持旧版 .doc 格式，请用 Word 另存为 .docx 后再导入: %s", filePath)
+		// 旧版 Word 二进制格式（OLE2）。纯 Go 解析 WordDocument 流的正文，
+		// 跨平台无外部依赖（见 doc.go / internal/ole2）。
+		t, err := parseDoc(filePath)
+		if err != nil {
+			return ParsedResult{}, fmt.Errorf("旧版 .doc 解析失败: %w", err)
+		}
+		text = t
+		paragraphs = splitParagraphs(t)
 	default:
 		return ParsedResult{}, fmt.Errorf("不支持的文件格式: %s", ext)
 	}

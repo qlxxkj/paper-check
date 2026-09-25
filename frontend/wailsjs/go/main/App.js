@@ -94,6 +94,10 @@ export function OpenFileDialog() {
   return window['go']['main']['App']['OpenFileDialog']();
 }
 
+export function OpenFolderDialog() {
+  return window['go']['main']['App']['OpenFolderDialog']();
+}
+
 export function RebuildNGramIndex() {
   return window['go']['main']['App']['RebuildNGramIndex']();
 }

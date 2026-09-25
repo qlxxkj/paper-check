@@ -51,6 +51,8 @@ export function OpenDoc(arg1:string):Promise<Record<string, any>>;
 
 export function OpenFileDialog():Promise<Array<string>>;
 
+export function OpenFolderDialog():Promise<string>;
+
 export function RebuildNGramIndex():Promise<Record<string, number>>;
 
 export function RestoreDB(arg1:string):Promise<boolean>;

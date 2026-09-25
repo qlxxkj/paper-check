@@ -90,6 +90,20 @@ func (a *App) OpenFileDialog() []string {
 	return paths
 }
 
+// OpenFolderDialog 打开文件夹选择对话框，返回所选文件夹路径（用于批量导入/批量查重的"选择文件夹"）
+func (a *App) OpenFolderDialog() string {
+	if a.ctx == nil {
+		return ""
+	}
+	path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择包含 Word 文档的文件夹",
+	})
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
 // SaveFileDialog 保存文件对话框，返回路径（取消返回空串）
 func (a *App) SaveFileDialog(defaultPath string) string {
 	if a.ctx == nil {

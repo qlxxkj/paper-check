@@ -45,6 +45,11 @@ export function importMixed(paths: string[]): Promise<{ success: number; failed:
     return go().ImportMixed(paths);
 }
 
+// 递归导入文件夹（import-folder）
+export function importFolder(path: string): Promise<{ success: number; failed: number; skipped: number }> {
+    return go().ImportFolder(path);
+}
+
 // 存量导入文件夹（import-legacy-folder）
 export function importLegacyFolder(path: string): Promise<any[]> {
     return go().ImportLegacyFolder(path);
@@ -53,6 +58,11 @@ export function importLegacyFolder(path: string): Promise<any[]> {
 // 打开文件对话框（open-file-dialog）
 export function openFileDialog(): Promise<string[]> {
     return go().OpenFileDialog();
+}
+
+// 选择文件夹（用于批量导入/批量查重）
+export function openFolderDialog(): Promise<string> {
+    return go().OpenFolderDialog();
 }
 
 // 备份数据库（backup-db）

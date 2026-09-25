@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Document } from '../shared/types';
 import CompareView from '../components/CompareView';
 import {
-    getAllDocs, getRepeatRelations, importFiles, importMixed, openFileDialog,
+    getAllDocs, getRepeatRelations, importFiles, importFolder, openFolderDialog, openFileDialog,
     batchMarkSource, deleteDoc, batchDelete, onImportProgress,
 } from '../api';
 
@@ -133,13 +133,13 @@ const DuplicateList: React.FC = () => {
     };
 
     const handleBatchImport = async () => {
-        const filePaths = await openFileDialog();
-        if (!filePaths || filePaths.length === 0) return;
+        const folderPath = await openFolderDialog();
+        if (!folderPath) return;
         // 清除旧的隐藏定时器，显示进度框
         if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
-        setProgress({ type: 'start', status: '准备批量导入...', index: 0, total: filePaths.length });
+        setProgress({ type: 'start', status: '准备批量导入...', index: 0, total: 0 });
         try {
-            await importMixed(filePaths);
+            await importFolder(folderPath);
             // 返回说明所有 worker 已完成，DB 写入完毕
             safeHideProgress();
             // 刷新列表

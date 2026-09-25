@@ -100,48 +100,66 @@ func myersDiff(a, b []rune) []diffOp {
 	return merged
 }
 
-// CompareDocs 对齐 diffComparator.ts：双文档段落两两 diff，取最佳 rate
+// CompareDocs 对齐 diffComparator.ts + hashComparator.ts 的双重逻辑：
+// 1. 先按整段 ParaHash 全等找出重复段落对（与列表 GetRepeatRelations 的
+//    pairRepeatRate 算法一致，避免"列表 100% 但查看为空"）。
+// 2. 对其余 doc1 段落与 doc2 段落两两字符级 diff，取最佳 rate（原逻辑）。
 func CompareDocs(d *sql.DB, docId1, docId2 int, threshold float64) ([]DiffResult, error) {
-	paras1, err := d.Query(`SELECT ParaIndex, ParaText FROM Paragraph WHERE DocID = ? ORDER BY ParaIndex`, docId1)
+	paras1, err := loadParas(d, docId1)
 	if err != nil {
 		return nil, err
 	}
-	type p1 struct {
-		Idx  int
-		Text string
+	paras2, err := loadParas(d, docId2)
+	if err != nil {
+		return nil, err
 	}
-	var list1 []p1
-	for paras1.Next() {
-		var x p1
-		if err := paras1.Scan(&x.Idx, &x.Text); err != nil {
-			paras1.Close()
-			return nil, err
-		}
-		list1 = append(list1, x)
+	if len(paras1) == 0 || len(paras2) == 0 {
+		return []DiffResult{}, nil
 	}
-	paras1.Close()
 
-	paras2, err := d.Query(`SELECT ParaIndex, ParaText FROM Paragraph WHERE DocID = ? ORDER BY ParaIndex`, docId2)
-	if err != nil {
-		return nil, err
+	// doc2 段落哈希表：hash -> 段落索引
+	hashToParas2 := map[string][]int{}
+	for idx, p2 := range paras2 {
+		h := HashText(p2.Text)
+		hashToParas2[h] = append(hashToParas2[h], idx)
 	}
-	var list2 []p2type
-	for paras2.Next() {
-		var x p2type
-		if err := paras2.Scan(&x.Idx, &x.Text); err != nil {
-			paras2.Close()
-			return nil, err
-		}
-		list2 = append(list2, x)
-	}
-	paras2.Close()
 
 	results := []DiffResult{}
-	for _, p1 := range list1 {
+	matched2 := map[int]bool{}
+	for i, p1 := range paras1 {
+		h1 := HashText(p1.Text)
+		// 1. 整段哈希全等 → 100% 重复，与列表口径一致
+		if candidates, ok := hashToParas2[h1]; ok && len(candidates) > 0 {
+			bestIdx2 := -1
+			for _, c := range candidates {
+				if !matched2[c] {
+					bestIdx2 = c
+					break
+				}
+			}
+			if bestIdx2 == -1 {
+				bestIdx2 = candidates[0]
+			}
+			matched2[bestIdx2] = true
+			results = append(results, DiffResult{
+				DocID1:       docId1,
+				DocID2:       docId2,
+				ParaIndex1:   p1.Idx,
+				ParaIndex2:   paras2[bestIdx2].Idx,
+				Doc1ParaText: p1.Text,
+				Doc2ParaText: paras2[bestIdx2].Text,
+				// 整段相同 → 整段高亮
+				Highlights: []HighlightSegment{{Text: p1.Text, IsHighlight: true}},
+				MatchRate:  1.0,
+			})
+			continue
+		}
+		// 2. 字符级 diff（与 doc2 未匹配段落）
+		_ = i
 		bestRate := 0.0
 		var bestSegs []HighlightSegment
 		bestIdx2 := -1
-		for _, p2 := range list2 {
+		for _, p2 := range paras2 {
 			segs := DiffParagraphs(p1.Text, p2.Text)
 			repeatChars := 0
 			for _, h := range segs {
@@ -166,7 +184,7 @@ func CompareDocs(d *sql.DB, docId1, docId2 int, threshold float64) ([]DiffResult
 				ParaIndex1:   p1.Idx,
 				ParaIndex2:   bestIdx2,
 				Doc1ParaText: p1.Text,
-				Doc2ParaText: list2[idxOf(list2, bestIdx2)].Text,
+				Doc2ParaText: lookupPara(paras2, bestIdx2),
 				Highlights:   bestSegs,
 				MatchRate:    bestRate,
 			})
@@ -175,13 +193,30 @@ func CompareDocs(d *sql.DB, docId1, docId2 int, threshold float64) ([]DiffResult
 	return results, nil
 }
 
-func idxOf(list []p2type, v int) int {
+func loadParas(d *sql.DB, docId int) ([]p2type, error) {
+	rows, err := d.Query(`SELECT ParaIndex, ParaText FROM Paragraph WHERE DocID = ? ORDER BY ParaIndex`, docId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []p2type
+	for rows.Next() {
+		var x p2type
+		if err := rows.Scan(&x.Idx, &x.Text); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, nil
+}
+
+func lookupPara(list []p2type, v int) string {
 	for i := range list {
 		if list[i].Idx == v {
-			return i
+			return list[i].Text
 		}
 	}
-	return -1
+	return ""
 }
 
 type p2type struct {

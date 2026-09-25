@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     onImportProgress,
     backupDB,
-    openFileDialog,
+    openFolderDialog,
     importLegacyFolder,
     rebuildNGramIndex,
 } from '../api';
@@ -35,10 +35,8 @@ const DatabaseMaintenance: React.FC = () => {
     };
 
     const handleBatchImport = async () => {
-        const openResult = await openFileDialog();
-        if (!openResult || openResult.length === 0) return;
-
-        const folderPath = openResult[0];
+        const folderPath = await openFolderDialog();
+        if (!folderPath) return;
         setImporting(true);
         setProgress(null);
         setImportResult(null);
